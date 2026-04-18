@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Car Simulator</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #game-container {
+            width: 800px;
+            height: 600px;
+            background-color: #34495e;
+            position: relative;
+            border: 8px solid #1a252f;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        /* Adding some ground detail */
+        #game-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.2) 100%),
+                linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.05) 75%, rgba(255,255,255,0.05)),
+                linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.05) 75%, rgba(255,255,255,0.05));
+            background-size: 100% 100%, 40px 40px, 40px 40px;
+            background-position: 0 0, 0 0, 20px 20px;
+            pointer-events: none;
+        }
+        #car {
+            width: 40px;
+            height: 70px;
+            background-color: #e74c3c;
+            position: absolute;
+            top: 0;
+            left: 0;
+            border-radius: 8px;
+            box-shadow: 0 10px 15px rgba(0,0,0,0.4);
+            z-index: 10;
+            /* Center transform origin for proper rotation */
+            transform-origin: center center;
+        }
+        /* Windshield */
+        #car::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 4px;
+            right: 4px;
+            height: 15px;
+            background-color: #1a252f;
+            border-radius: 3px;
+        }
+        /* Headlights */
+        #car::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 6px;
+            width: 8px;
+            height: 5px;
+            background-color: #f1c40f;
+            border-radius: 2px;
+            box-shadow: 20px 0 0 #f1c40f, 0 -15px 20px 5px rgba(241, 196, 15, 0.4), 20px -15px 20px 5px rgba(241, 196, 15, 0.4);
+        }
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 25px;
+            border-radius: 10px;
+            pointer-events: none;
+            z-index: 20;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        h3 {
+            margin-top: 0;
+            color: #3498db;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        p {
+            margin: 8px 0;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        kbd {
+            background-color: #eee;
+            border-radius: 3px;
+            border: 1px solid #b4b4b4;
+            box-shadow: 0 1px 1px rgba(0,0,0,.2), 0 2px 0 0 rgba(255,255,255,.7) inset;
+            color: #333;
+            display: inline-block;
+            font-size: .85em;
+            font-weight: 700;
+            line-height: 1;
+            padding: 2px 4px;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="instructions">
+            <h3>Controls</h3>
+            <p><kbd>↑</kbd> Accelerate</p>
+            <p><kbd>↓</kbd> Brake / Reverse</p>
+            <p><kbd>←</kbd> Steer Left</p>
+            <p><kbd>→</kbd> Steer Right</p>
+        </div>
+        <div id="car"></div>
+    </div>
+
+    <script>
+        const car = document.getElementById('car');
+        const container = document.getElementById('game-container');
+
+        // Initial Car state
+        let x = container.offsetWidth / 2 - 20; // Center X
+        let y = container.offsetHeight / 2 - 35; // Center Y
+        let angle = 0;
+        let speed = 0;
+        
+        // Car tuning
+        const maxSpeed = 7;
+        const maxReverseSpeed = 3;
+        const acceleration = 0.15;
+        const friction = 0.05;
+        const turnSpeed = 3.5;
+
+        // Input state
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.key)) {
+                keys[e.key] = true;
+                e.preventDefault(); // Prevent page scrolling
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) {
+                keys[e.key] = false;
+            }
+        });
+
+        function update() {
+            // Acceleration (forward is negative Y initially, but we handle it via trig)
+            if (keys.ArrowUp) {
+                speed += acceleration;
+            } else if (keys.ArrowDown) {
+                speed -= acceleration;
+            }
+
+            // Friction (slow down naturally when no gas/brake is applied)
+            if (!keys.ArrowUp && !keys.ArrowDown) {
+                if (speed > 0) {
+                    speed -= friction;
+                    if (speed < 0) speed = 0;
+                } else if (speed < 0) {
+                    speed += friction;
+                    if (speed > 0) speed = 0;
+                }
+            }
+
+            // Cap speeds
+            if (speed > maxSpeed) speed = maxSpeed;
+            if (speed < -maxReverseSpeed) speed = -maxReverseSpeed;
+
+            // Turning (only turn if moving)
+            // A car can't turn if it is completely stationary
+            if (Math.abs(speed) > 0.2) {
+                // Determine direction of steering (reverses when going backwards)
+                const direction = speed > 0 ? 1 : -1;
+                
+                if (keys.ArrowLeft) {
+                    angle -= turnSpeed * direction;
+                }
+                if (keys.ArrowRight) {
+                    angle += turnSpeed * direction;
+                }
+            }
+
+            // Calculate new position using trigonometry
+            // In standard screen coordinates, 0 degrees is up (-y)
+            const rad = angle * Math.PI / 180;
+            
+            // Math.sin(rad) gives X movement, Math.cos(rad) gives Y movement.
+            // Since screen Y grows downwards, we subtract the cosine for forward movement.
+            x += Math.sin(rad) * speed;
+            y -= Math.cos(rad) * speed;
+
+            // Simple collision detection with walls
+            if (x < 0) {
+                x = 0;
+                speed *= 0.5; // bounce/slowdown effect
+            }
+            if (x > container.offsetWidth - car.offsetWidth) {
+                x = container.offsetWidth - car.offsetWidth;
+                speed *= 0.5;
+            }
+            if (y < 0) {
+                y = 0;
+                speed *= 0.5;
+            }
+            if (y > container.offsetHeight - car.offsetHeight) {
+                y = container.offsetHeight - car.offsetHeight;
+                speed *= 0.5;
+            }
+
+            // Apply transformations
+            car.style.transform = `translate(${x}px, ${y}px) rotate(${angle}deg)`;
+
+            // Loop
+            requestAnimationFrame(update);
+        }
+
+        // Start the game loop
+        requestAnimationFrame(update);
+    </script>
+</body>
+</html>
